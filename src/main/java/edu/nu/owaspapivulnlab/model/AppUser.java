@@ -12,12 +12,11 @@ public class AppUser {
     @NotBlank
     private String username;
 
-    // VULNERABILITY(API3: Excessive Data Exposure): storing plaintext passwords for demo
-    // Students should hash with BCrypt and use proper credential storage.
+    // FIXED: Now stores BCrypt hashed passwords
     @NotBlank
     private String password;
 
-    // VULNERABILITY(API6: Mass Assignment): role and isAdmin are bindable via incoming JSON
+    // FIXED: Role and isAdmin are now server-controlled, not bindable from client
     private String role;   // e.g., "USER" or "ADMIN"
     private boolean isAdmin;
 

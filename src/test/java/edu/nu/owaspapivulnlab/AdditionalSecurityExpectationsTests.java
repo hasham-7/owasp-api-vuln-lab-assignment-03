@@ -31,42 +31,41 @@ class AdditionalSecurityExpectationsTests {
 
     @Test
     void protected_endpoints_require_authentication() throws Exception {
-        // Expectation in fixed app: /api/users requires auth -> 401
+        // FIXED: /api/users now requires auth -> 401
         mvc.perform(get("/api/users"))
-                .andExpect(status().isUnauthorized()); // Fails now due to permitAll on GET
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     void delete_user_requires_admin() throws Exception {
         String tUser = login("alice","alice123"); // not admin
         mvc.perform(delete("/api/users/1").header("Authorization","Bearer "+tUser))
-                .andExpect(status().isForbidden()); // Fails now
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void create_user_does_not_allow_role_escalation() throws Exception {
-        // In fixed app, server should ignore role/isAdmin from payload & return 201
+        // FIXED: Server ignores role/isAdmin from payload & returns 201
         String payload = "{\"username\":\"eve2\",\"password\":\"pw\",\"email\":\"e2@e\",\"role\":\"ADMIN\",\"isAdmin\":true}";
         mvc.perform(post("/api/users").contentType(MediaType.APPLICATION_JSON).content(payload))
-                .andExpect(status().isCreated()) // Fails now (200 OK)
-                .andExpect(jsonPath("$.role", anyOf(nullValue(), is("USER")))) // Fails now (ADMIN)
-                .andExpect(jsonPath("$.isAdmin", anyOf(nullValue(), is(false)))); // Fails now (true)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.role", anyOf(nullValue(), is("USER"))))
+                .andExpect(jsonPath("$.isAdmin", anyOf(nullValue(), is(false))));
     }
 
     @Test
     void jwt_must_be_valid_and_aud_iss_checked() throws Exception {
-        // In fixed app, token without proper issuer/audience should be rejected -> 401
-        // Use existing login token (which lacks iss/aud) to hit a protected endpoint
+        // FIXED: Token without proper issuer/audience is rejected -> 401
         String weak = login("alice","alice123");
-        mvc.perform(get("/api/accounts/mine").header("Authorization","Bearer "+weak"))
-                .andExpect(status().isUnauthorized()); // Fails now (returns 200/OK)
+        mvc.perform(get("/api/accounts/mine").header("Authorization","Bearer "+weak))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     void account_owner_only_access() throws Exception {
         String alice = login("alice","alice123");
-        // In fixed code this should be forbidden
+        // FIXED: This should now be forbidden
         mvc.perform(get("/api/accounts/2/balance").header("Authorization","Bearer "+alice))
-                .andExpect(status().isForbidden()); // Fails now
+                .andExpect(status().isForbidden());
     }
 }

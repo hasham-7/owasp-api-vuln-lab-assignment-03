@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -21,12 +22,13 @@ import java.io.IOException;
 import java.util.Collections;
 
 @Configuration
+@EnableMethodSecurity
 public class SecurityConfig {
 
     @Value("${app.jwt.secret}")
     private String secret;
 
-    // VULNERABILITY(API7 Security Misconfiguration): overly permissive CORS/CSRF and antMatchers order
+    // FIXED: Tightened security configuration
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http.csrf(csrf -> csrf.disable()); // APIs typically stateless; but add CSRF for state-changing in real apps
@@ -34,9 +36,10 @@ public class SecurityConfig {
 
         http.authorizeHttpRequests(reg -> reg
                 .requestMatchers("/api/auth/**", "/h2-console/**").permitAll()
-                // VULNERABILITY: broad permitAll on GET allows data scraping (API1/2 depending on context)
-                .requestMatchers(HttpMethod.GET, "/api/**").permitAll()
+                // FIXED: Removed broad permitAll on GET - now requires authentication
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/users/**").hasAnyRole("USER", "ADMIN")
+                .requestMatchers("/api/accounts/**").hasAnyRole("USER", "ADMIN")
                 .anyRequest().authenticated()
         );
 
@@ -46,7 +49,7 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // Minimal JWT filter (VULNERABILITY: weak validation - no audience, issuer checks; long TTL)
+    // FIXED: Secure JWT filter with proper validation
     static class JwtFilter extends OncePerRequestFilter {
         private final String secret;
         JwtFilter(String secret) { this.secret = secret; }
@@ -58,7 +61,12 @@ public class SecurityConfig {
             if (auth != null && auth.startsWith("Bearer ")) {
                 String token = auth.substring(7);
                 try {
-                    Claims c = Jwts.parserBuilder().setSigningKey(secret.getBytes()).build()
+                    // FIXED: Proper JWT validation with issuer/audience checks
+                    Claims c = Jwts.parserBuilder()
+                            .setSigningKey(secret.getBytes())
+                            .requireIssuer("owasp-api-lab")
+                            .requireAudience("api-users")
+                            .build()
                             .parseClaimsJws(token).getBody();
                     String user = c.getSubject();
                     String role = (String) c.get("role");
@@ -66,7 +74,10 @@ public class SecurityConfig {
                             role != null ? Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + role)) : Collections.emptyList());
                     SecurityContextHolder.getContext().setAuthentication(authn);
                 } catch (JwtException e) {
-                    // VULNERABILITY: swallow errors; continue as anonymous (API7)
+                    // FIXED: Proper error handling - reject invalid tokens
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.getWriter().write("{\"error\":\"Invalid token\"}");
+                    return;
                 }
             }
             chain.doFilter(request, response);

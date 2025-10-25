@@ -1,11 +1,13 @@
 package edu.nu.owaspapivulnlab.web;
 
-import jakarta.validation.constraints.NotBlank;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
 import edu.nu.owaspapivulnlab.model.AppUser;
 import edu.nu.owaspapivulnlab.repo.AppUserRepository;
 import edu.nu.owaspapivulnlab.service.JwtService;
+import edu.nu.owaspapivulnlab.service.PasswordService;
+import edu.nu.owaspapivulnlab.web.dto.CreateUserDto;
+import jakarta.validation.constraints.NotBlank;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -15,10 +17,12 @@ import java.util.Map;
 public class AuthController {
     private final AppUserRepository users;
     private final JwtService jwt;
+    private final PasswordService passwordService;
 
-    public AuthController(AppUserRepository users, JwtService jwt) {
+    public AuthController(AppUserRepository users, JwtService jwt, PasswordService passwordService) {
         this.users = users;
         this.jwt = jwt;
+        this.passwordService = passwordService;
     }
 
     public static class LoginReq {
@@ -54,19 +58,45 @@ public class AuthController {
         public void setToken(String token) { this.token = token; }
     }
 
+    // FIXED: Secure login with BCrypt password verification
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginReq req) {
-        // VULNERABILITY(API2: Broken Authentication): plaintext password check, no lockout/rate limit/MFA
         AppUser user = users.findByUsername(req.username()).orElse(null);
-        if (user != null && user.getPassword().equals(req.password())) {
+        if (user != null && passwordService.matches(req.password(), user.getPassword())) {
             Map<String, Object> claims = new HashMap<>();
             claims.put("role", user.getRole());
-            claims.put("isAdmin", user.isAdmin()); // VULN: trusts client-side role later
+            claims.put("isAdmin", user.isAdmin());
             String token = jwt.issue(user.getUsername(), claims);
             return ResponseEntity.ok(new TokenRes(token));
         }
         Map<String, String> error = new HashMap<>();
         error.put("error", "invalid credentials");
         return ResponseEntity.status(401).body(error);
+    }
+
+    // FIXED: Added secure signup endpoint
+    @PostMapping("/signup")
+    public ResponseEntity<?> signup(@RequestBody CreateUserDto req) {
+        if (users.findByUsername(req.getUsername()).isPresent()) {
+            Map<String, String> error = new HashMap<>();
+            error.put("error", "username already exists");
+            return ResponseEntity.status(400).body(error);
+        }
+
+        AppUser newUser = AppUser.builder()
+                .username(req.getUsername())
+                .password(passwordService.encodePassword(req.getPassword()))
+                .email(req.getEmail())
+                .role("USER")  // FIXED: Server controls role assignment
+                .isAdmin(false)  // FIXED: Server controls admin status
+                .build();
+
+        users.save(newUser);
+
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("role", newUser.getRole());
+        claims.put("isAdmin", newUser.isAdmin());
+        String token = jwt.issue(newUser.getUsername(), claims);
+        return ResponseEntity.ok(new TokenRes(token));
     }
 }
