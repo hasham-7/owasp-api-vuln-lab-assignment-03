@@ -9,15 +9,15 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import java.util.HashMap;
 import java.util.Map;
 
-// VULNERABILITY(API7): overly verbose error responses
+// FIXED: Reduced error detail exposure for security
 @ControllerAdvice
 public class GlobalErrorHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> all(Exception e) {
         Map<String, String> errorMap = new HashMap<>();
-        errorMap.put("error", e.getClass().getName());
-        errorMap.put("message", e.getMessage());
+        errorMap.put("error", "internal server error");
+        // FIXED: Don't expose internal error details
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(errorMap);
     }
@@ -25,7 +25,8 @@ public class GlobalErrorHandler {
     @ExceptionHandler(DataAccessException.class)
     public ResponseEntity<?> db(DataAccessException e) {
         Map<String, String> errorMap = new HashMap<>();
-        errorMap.put("dbError", e.getMessage());
+        errorMap.put("error", "database error");
+        // FIXED: Don't expose database error details
         return ResponseEntity.status(500).body(errorMap);
     }
 }
